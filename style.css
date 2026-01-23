@@ -1,0 +1,144 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: #000;
+    overflow: hidden;
+    cursor: crosshair;
+}
+
+#container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#particle-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, #0a0a1a 0%, #000000 100%);
+}
+
+#info {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: #fff;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(147, 51, 234, 0.3);
+    max-width: 350px;
+}
+
+#info h1 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #9333ea;
+    text-shadow: 0 0 10px rgba(147, 51, 234, 0.5);
+}
+
+#info p {
+    font-size: 14px;
+    margin-bottom: 15px;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+#status {
+    margin-bottom: 15px;
+}
+
+#listening-status {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+#listening-status.listening {
+    color: #10b981;
+    animation: pulse 1.5s infinite;
+}
+
+#listening-status.not-listening {
+    color: #ef4444;
+}
+
+#recognized-text {
+    display: block;
+    font-size: 16px;
+    color: #9333ea;
+    min-height: 24px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(147, 51, 234, 0.5);
+}
+
+#start-btn {
+    background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 25px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(147, 51, 234, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#start-btn:hover {
+    background: linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(147, 51, 234, 0.4);
+}
+
+#start-btn:active {
+    transform: translateY(0);
+}
+
+#start-btn.listening {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 4px 15px rgba(147, 51, 234, 0.3);
+    }
+    50% {
+        box-shadow: 0 4px 25px rgba(147, 51, 234, 0.6);
+    }
+    100% {
+        box-shadow: 0 4px 15px rgba(147, 51, 234, 0.3);
+    }
+}
+
+@media (max-width: 768px) {
+    #info {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        max-width: none;
+        padding: 15px;
+    }
+    
+    #info h1 {
+        font-size: 20px;
+    }
+    
+    #info p {
+        font-size: 12px;
+    }
+}
