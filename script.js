@@ -1,445 +1,409 @@
-// Voice Particle Morph System
-class VoiceParticleMorph {
-    constructor() {
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.particles = null;
-        this.particleSystem = null;
-        this.particleCount = 4000;
-        this.originalPositions = null;
-        this.targetPositions = null;
-        this.isAnimating = false;
-        this.speechRecognition = null;
-        this.isListening = false;
-        
-        this.init();
-        this.setupSpeechRecognition();
-        this.setupEventListeners();
+(() => {
+  "use strict";
+
+  const PARTICLE_COUNT = window.innerWidth < 720 ? 5000 : 9000;
+  const state = {
+    scene: null,
+    camera: null,
+    renderer: null,
+    points: null,
+    geometry: null,
+    sphere: null,
+    target: null,
+    morphStart: null,
+    morphProgress: 1,
+    dragging: false,
+    pointerX: 0,
+    pointerY: 0,
+    recognition: null,
+    listening: false,
+    handCamera: null,
+    handsEnabled: false,
+    toastTimer: null
+  };
+
+  const $ = (selector) => document.querySelector(selector);
+  const canvas = $("#particle-canvas");
+  const input = $("#text-input");
+  const statusText = $("#status-text");
+  const statusPill = $("#status-pill");
+
+  function setStatus(text, busy = false) {
+    statusText.textContent = text;
+    statusPill.classList.toggle("busy", busy);
+  }
+
+  function toast(message) {
+    const el = $("#toast");
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+  }
+
+  function initScene() {
+    state.scene = new THREE.Scene();
+    state.scene.fog = new THREE.FogExp2(0x050510, 0.012);
+
+    state.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1000);
+    state.camera.position.set(0, 0, 40);
+
+    state.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    state.renderer.setSize(innerWidth, innerHeight);
+    state.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    state.renderer.outputEncoding = THREE.sRGBEncoding;
+
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    state.sphere = new Float32Array(PARTICLE_COUNT * 3);
+
+    const colorA = new THREE.Color("#5de8ff");
+    const colorB = new THREE.Color("#9b6cff");
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const y = 1 - (i / (PARTICLE_COUNT - 1)) * 2;
+      const radiusAtY = Math.sqrt(1 - y * y);
+      const theta = Math.PI * (3 - Math.sqrt(5)) * i;
+      const radius = 10 + Math.sin(i * 0.37) * 0.28;
+      const idx = i * 3;
+
+      state.sphere[idx] = Math.cos(theta) * radiusAtY * radius;
+      state.sphere[idx + 1] = y * radius;
+      state.sphere[idx + 2] = Math.sin(theta) * radiusAtY * radius;
+      positions.set(state.sphere.subarray(idx, idx + 3), idx);
+
+      const mixed = colorA.clone().lerp(colorB, (y + 1) / 2);
+      colors[idx] = mixed.r;
+      colors[idx + 1] = mixed.g;
+      colors[idx + 2] = mixed.b;
     }
 
-    init() {
-        // Scene setup
-        this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.Fog(0x000000, 1, 1000);
+    state.geometry = new THREE.BufferGeometry();
+    state.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    state.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-        // Camera setup
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000
-        );
-        this.camera.position.z = 50;
+    const material = new THREE.PointsMaterial({
+      size: innerWidth < 720 ? 0.12 : 0.105,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.94,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
 
-        // Renderer setup
-        this.renderer = new THREE.WebGLRenderer({
-            canvas: document.getElementById('particle-canvas'),
-            antialias: true,
-            alpha: true
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.setClearColor(0x000000, 1);
+    state.points = new THREE.Points(state.geometry, material);
+    state.points.position.x = innerWidth > 900 ? 10 : 0;
+    state.scene.add(state.points);
+    animate();
+  }
 
-        // Create particle system
-        this.createParticleSystem();
+  function sampleCanvas(sourceCanvas, scale, alphaTest = 30) {
+    const ctx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+    const { width, height } = sourceCanvas;
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    const candidates = [];
 
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0x9333ea, 0.5);
-        this.scene.add(ambientLight);
-
-        // Start animation loop
-        this.animate();
+    for (let y = 0; y < height; y += 2) {
+      for (let x = 0; x < width; x += 2) {
+        const offset = (y * width + x) * 4;
+        const brightness = pixels[offset] + pixels[offset + 1] + pixels[offset + 2];
+        if (pixels[offset + 3] > alphaTest && brightness > 120) {
+          candidates.push({
+            x: (x - width / 2) * scale,
+            y: (height / 2 - y) * scale,
+            r: pixels[offset] / 255,
+            g: pixels[offset + 1] / 255,
+            b: pixels[offset + 2] / 255
+          });
+        }
+      }
     }
 
-    createParticleSystem() {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(this.particleCount * 3);
-        const colors = new Float32Array(this.particleCount * 3);
-        const sizes = new Float32Array(this.particleCount);
+    if (!candidates.length) return null;
+    const targets = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = state.geometry.attributes.color.array;
 
-        // Create sphere of particles
-        for (let i = 0; i < this.particleCount; i++) {
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 15;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const point = candidates[Math.floor(i * candidates.length / PARTICLE_COUNT) % candidates.length];
+      const idx = i * 3;
+      targets[idx] = point.x + (Math.random() - 0.5) * 0.06;
+      targets[idx + 1] = point.y + (Math.random() - 0.5) * 0.06;
+      targets[idx + 2] = (Math.random() - 0.5) * 1.2;
+      colors[idx] = Math.max(0.25, point.r);
+      colors[idx + 1] = Math.max(0.25, point.g);
+      colors[idx + 2] = Math.max(0.35, point.b);
+    }
 
-            const x = radius * Math.sin(phi) * Math.cos(theta);
-            const y = radius * Math.sin(phi) * Math.sin(theta);
-            const z = radius * Math.cos(phi);
+    state.geometry.attributes.color.needsUpdate = true;
+    return targets;
+  }
 
-            positions[i * 3] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = z;
+  function morphToText(value) {
+    const text = value.trim().slice(0, 60);
+    if (!text) {
+      toast("Type or say something first");
+      input.focus();
+      return;
+    }
 
-            // Purple color with variation
-            colors[i * 3] = 0.5 + Math.random() * 0.3; // R
-            colors[i * 3 + 1] = 0.2 + Math.random() * 0.2; // G
-            colors[i * 3 + 2] = 0.9 + Math.random() * 0.1; // B
+    const offscreen = document.createElement("canvas");
+    const ctx = offscreen.getContext("2d");
+    const fontSize = text.length > 24 ? 68 : 92;
+    ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+    const measured = Math.ceil(ctx.measureText(text.toUpperCase()).width);
+    offscreen.width = Math.min(1800, Math.max(520, measured + 90));
+    offscreen.height = 190;
 
-            sizes[i] = Math.random() * 2 + 0.5;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+    const gradient = ctx.createLinearGradient(0, 0, offscreen.width, 0);
+    gradient.addColorStop(0, "#61e9ff");
+    gradient.addColorStop(1, "#aa76ff");
+    ctx.fillStyle = gradient;
+    ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text.toUpperCase(), offscreen.width / 2, offscreen.height / 2);
+
+    const scale = Math.min(0.075, 42 / offscreen.width);
+    const targets = sampleCanvas(offscreen, scale);
+    if (targets) startMorph(targets, "Text created");
+  }
+
+  function processImage(file) {
+    if (!file || !file.type.startsWith("image/")) {
+      toast("Please choose an image file");
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      const offscreen = document.createElement("canvas");
+      const size = 260;
+      offscreen.width = size;
+      offscreen.height = size;
+      const ctx = offscreen.getContext("2d");
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, size, size);
+
+      const ratio = Math.min(size / image.width, size / image.height);
+      const w = image.width * ratio;
+      const h = image.height * ratio;
+      ctx.drawImage(image, (size - w) / 2, (size - h) / 2, w, h);
+      const targets = sampleCanvas(offscreen, 0.075, 20);
+      if (targets) startMorph(targets, "Image transformed");
+      else toast("This image is too dark to sample");
+      URL.revokeObjectURL(image.src);
+    };
+    image.src = URL.createObjectURL(file);
+  }
+
+  function startMorph(targets, message) {
+    state.morphStart = state.geometry.attributes.position.array.slice();
+    state.target = targets;
+    state.morphProgress = 0;
+    state.points.rotation.set(0, 0, 0);
+    setStatus("Morphing", true);
+    toast(message);
+  }
+
+  function resetSphere() {
+    const colors = state.geometry.attributes.color.array;
+    const a = new THREE.Color("#5de8ff");
+    const b = new THREE.Color("#9b6cff");
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const idx = i * 3;
+      const t = (state.sphere[idx + 1] / 10 + 1) / 2;
+      const c = a.clone().lerp(b, t);
+      colors[idx] = c.r;
+      colors[idx + 1] = c.g;
+      colors[idx + 2] = c.b;
+    }
+    state.geometry.attributes.color.needsUpdate = true;
+    startMorph(state.sphere, "Returned to aura");
+    input.value = "";
+  }
+
+  function setupSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      $("#mic-btn").disabled = true;
+      $("#mic-btn").title = "Voice input requires Chrome or Edge";
+      return;
+    }
+
+    state.recognition = new SpeechRecognition();
+    state.recognition.continuous = false;
+    state.recognition.interimResults = true;
+
+    state.recognition.onstart = () => {
+      state.listening = true;
+      $("#mic-btn").classList.add("listening");
+      setStatus("Listening", true);
+    };
+
+    state.recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      input.value = transcript;
+      if (event.results[event.results.length - 1].isFinal) morphToText(transcript);
+    };
+
+    state.recognition.onerror = (event) => {
+      if (event.error !== "aborted") toast(`Voice input: ${event.error}`);
+    };
+
+    state.recognition.onend = () => {
+      state.listening = false;
+      $("#mic-btn").classList.remove("listening");
+      setStatus("Ready");
+    };
+  }
+
+  function toggleSpeech() {
+    if (!state.recognition) {
+      toast("Voice input is not supported in this browser");
+      return;
+    }
+    if (state.listening) state.recognition.stop();
+    else {
+      state.recognition.lang = $("#language-select").value;
+      state.recognition.start();
+    }
+  }
+
+  async function toggleGestures() {
+    const panel = $("#camera-panel");
+    if (state.handsEnabled) {
+      const stream = $("#webcam").srcObject;
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      panel.hidden = true;
+      state.handsEnabled = false;
+      setStatus("Ready");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.Hands || !window.Camera) {
+      toast("Gesture control is not available");
+      return;
+    }
+
+    try {
+      panel.hidden = false;
+      const video = $("#webcam");
+      const handCanvas = $("#hand-canvas");
+      const handCtx = handCanvas.getContext("2d");
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.62,
+        minTrackingConfidence: 0.58
+      });
+
+      hands.onResults((results) => {
+        handCanvas.width = video.videoWidth || 320;
+        handCanvas.height = video.videoHeight || 240;
+        handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+        const landmarks = results.multiHandLandmarks?.[0];
+        if (!landmarks) {
+          setStatus("Show your hand", true);
+          return;
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        drawConnectors(handCtx, landmarks, HAND_CONNECTIONS, { color: "#5de8ff", lineWidth: 2 });
+        drawLandmarks(handCtx, landmarks, { color: "#ffffff", radius: 2 });
+        const pinch = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+        state.points.rotation.y += (0.5 - landmarks[8].x) * 0.035;
+        state.camera.position.z += ((pinch < 0.06 ? 28 : 40) - state.camera.position.z) * 0.04;
+        setStatus(pinch < 0.06 ? "Pinch: zoom in" : "Hand tracking", true);
+      });
 
-        // Store original positions
-        this.originalPositions = positions.slice();
+      state.handCamera = new Camera(video, {
+        width: 320,
+        height: 240,
+        onFrame: async () => hands.send({ image: video })
+      });
+      await state.handCamera.start();
+      state.handsEnabled = true;
+      setStatus("Gesture control", true);
+    } catch (error) {
+      panel.hidden = true;
+      toast("Camera permission was not enabled");
+      setStatus("Ready");
+    }
+  }
 
-        // Material with additive blending for glow effect
-        const material = new THREE.PointsMaterial({
-            size: 1,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            transparent: true,
-            opacity: 0.8,
-            sizeAttenuation: true
-        });
+  function bindEvents() {
+    $("#send-btn").addEventListener("click", () => morphToText(input.value));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") morphToText(input.value);
+    });
+    $("#mic-btn").addEventListener("click", toggleSpeech);
+    $("#upload-btn").addEventListener("click", () => $("#file-input").click());
+    $("#file-input").addEventListener("change", (event) => processImage(event.target.files[0]));
+    $("#reset-btn").addEventListener("click", resetSphere);
+    $("#gesture-btn").addEventListener("click", toggleGestures);
 
-        this.particleSystem = new THREE.Points(geometry, material);
-        this.scene.add(this.particleSystem);
+    canvas.addEventListener("pointerdown", (event) => {
+      state.dragging = true;
+      state.pointerX = event.clientX;
+      state.pointerY = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!state.dragging) return;
+      state.points.rotation.y += (event.clientX - state.pointerX) * 0.006;
+      state.points.rotation.x += (event.clientY - state.pointerY) * 0.006;
+      state.pointerX = event.clientX;
+      state.pointerY = event.clientY;
+    });
+    canvas.addEventListener("pointerup", () => { state.dragging = false; });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      state.camera.position.z = THREE.MathUtils.clamp(state.camera.position.z + event.deltaY * 0.015, 20, 65);
+    }, { passive: false });
+
+    addEventListener("resize", () => {
+      state.camera.aspect = innerWidth / innerHeight;
+      state.camera.updateProjectionMatrix();
+      state.renderer.setSize(innerWidth, innerHeight);
+      state.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      state.points.position.x = innerWidth > 900 ? 10 : 0;
+    });
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const positions = state.geometry.attributes.position.array;
+
+    if (state.morphProgress < 1 && state.target && state.morphStart) {
+      state.morphProgress = Math.min(1, state.morphProgress + 0.018);
+      const t = 1 - Math.pow(1 - state.morphProgress, 4);
+      for (let i = 0; i < positions.length; i++) {
+        positions[i] = state.morphStart[i] + (state.target[i] - state.morphStart[i]) * t;
+      }
+      state.geometry.attributes.position.needsUpdate = true;
+      if (state.morphProgress === 1) setStatus(state.handsEnabled ? "Gesture control" : "Ready");
+    } else if (!state.dragging && !state.handsEnabled) {
+      state.points.rotation.y += 0.0014;
     }
 
-    setupSpeechRecognition() {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.error('Speech recognition not supported');
-            this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
-            return;
-        }
+    state.renderer.render(state.scene, state.camera);
+  }
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        this.speechRecognition = new SpeechRecognition();
-        
-        this.speechRecognition.continuous = true;
-        this.speechRecognition.interimResults = true;
-        this.speechRecognition.lang = 'en-US';
-
-        this.speechRecognition.onstart = () => {
-            this.isListening = true;
-            this.updateListeningStatus(true);
-        };
-
-        this.speechRecognition.onend = () => {
-            this.isListening = false;
-            this.updateListeningStatus(false);
-        };
-
-        this.speechRecognition.onresult = (event) => {
-            const last = event.results.length - 1;
-            const transcript = event.results[last][0].transcript.trim();
-            
-            if (event.results[last].isFinal) {
-                this.handleSpeechResult(transcript);
-            }
-        };
-
-        this.speechRecognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            this.showError(`Speech recognition error: ${event.error}`);
-        };
-    }
-
-    setupEventListeners() {
-        const startBtn = document.getElementById('start-btn');
-        const canvas = document.getElementById('particle-canvas');
-
-        startBtn.addEventListener('click', () => {
-            this.toggleListening();
-        });
-
-        canvas.addEventListener('click', () => {
-            if (!this.isListening) {
-                this.toggleListening();
-            }
-        });
-
-        window.addEventListener('resize', () => {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    }
-
-    toggleListening() {
-        if (!this.speechRecognition) {
-            this.showError('Speech recognition not available');
-            return;
-        }
-
-        if (this.isListening) {
-            this.speechRecognition.stop();
-        } else {
-            this.speechRecognition.start();
-        }
-    }
-
-    updateListeningStatus(listening) {
-        const status = document.getElementById('listening-status');
-        const btn = document.getElementById('start-btn');
-        
-        if (listening) {
-            status.textContent = '🟢 Listening...';
-            status.className = 'listening';
-            btn.textContent = 'Stop Listening';
-            btn.className = 'listening';
-        } else {
-            status.textContent = '🔴 Not Listening';
-            status.className = 'not-listening';
-            btn.textContent = 'Start Listening';
-            btn.className = '';
-        }
-    }
-
-    handleSpeechResult(transcript) {
-        const textElement = document.getElementById('recognized-text');
-        textElement.textContent = `"${transcript}"`;
-        
-        console.log('Speech detected:', transcript); // Debug log
-        
-        // Morph particles to text
-        this.morphToText(transcript);
-    }
-
-    morphToText(text) {
-        if (this.isAnimating) return;
-        
-        console.log('Starting morph to:', text); // Debug log
-        this.isAnimating = true;
-        
-        // Create 3D text geometry
-        const loader = new THREE.FontLoader();
-        
-        // Since we can't load external fonts easily, we'll create a simple text representation
-        // using a grid-based approach
-        const textPositions = this.createTextPositions(text);
-        
-        console.log('Text positions created:', textPositions.length); // Debug log
-        
-        // Animate particles to text positions
-        this.animateParticles(textPositions);
-    }
-
-    createTextPositions(text) {
-        const positions = [];
-        const textLength = text.length;
-        const gridSize = Math.ceil(Math.sqrt(this.particleCount));
-        
-        // Simple text representation - create letter patterns
-        for (let i = 0; i < this.particleCount; i++) {
-            if (i < textLength * 100) { // Distribute particles for text
-                const charIndex = Math.floor(i / 100);
-                const particleInChar = i % 100;
-                
-                // Create simple letter patterns
-                const char = text[charIndex] || '?';
-                const charPositions = this.getCharacterPositions(char, particleInChar);
-                
-                positions.push(
-                    charPositions.x - (textLength * 3) / 2, // Center the text
-                    charPositions.y,
-                    charPositions.z
-                );
-            } else {
-                // Extra particles go to random positions around text
-                positions.push(
-                    (Math.random() - 0.5) * 50,
-                    (Math.random() - 0.5) * 20,
-                    (Math.random() - 0.5) * 10
-                );
-            }
-        }
-        
-        return positions;
-    }
-
-    getCharacterPositions(char, index) {
-        // Simple character representation
-        const chars = {
-            'A': () => this.createLetterA(index),
-            'E': () => this.createLetterE(index),
-            'H': () => this.createLetterH(index),
-            'L': () => this.createLetterL(index),
-            'O': () => this.createLetterO(index),
-            ' ': () => ({ x: 0, y: 0, z: 0 }),
-            'default': () => this.createDefaultChar(index)
-        };
-        
-        const createFunc = chars[char.toUpperCase()] || chars['default'];
-        return createFunc();
-    }
-
-    createLetterA(index) {
-        const t = index / 100;
-        if (t < 0.3) {
-            return { x: -2, y: 2 - t * 15, z: 0 };
-        } else if (t < 0.6) {
-            return { x: -2 + (t - 0.3) * 20, y: -2.5, z: 0 };
-        } else {
-            return { x: 2, y: -2.5 + (t - 0.6) * 15, z: 0 };
-        }
-    }
-
-    createLetterE(index) {
-        const t = index / 100;
-        if (t < 0.25) {
-            return { x: -2, y: 2 - t * 15, z: 0 };
-        } else if (t < 0.5) {
-            return { x: -2 + (t - 0.25) * 16, y: 2, z: 0 };
-        } else if (t < 0.75) {
-            return { x: -2 + (t - 0.5) * 16, y: -0.5, z: 0 };
-        } else {
-            return { x: -2 + (t - 0.75) * 16, y: -2.5, z: 0 };
-        }
-    }
-
-    createLetterH(index) {
-        const t = index / 100;
-        if (t < 0.4) {
-            return { x: -2, y: 2 - t * 11.25, z: 0 };
-        } else if (t < 0.6) {
-            return { x: -2 + (t - 0.4) * 20, y: -0.5, z: 0 };
-        } else {
-            return { x: 2, y: -0.5 - (t - 0.6) * 11.25, z: 0 };
-        }
-    }
-
-    createLetterL(index) {
-        const t = index / 100;
-        if (t < 0.7) {
-            return { x: -2, y: 2 - t * 6.43, z: 0 };
-        } else {
-            return { x: -2 + (t - 0.7) * 6.67, y: -2.5, z: 0 };
-        }
-    }
-
-    createLetterO(index) {
-        const t = index / 100;
-        const angle = t * Math.PI * 2;
-        return {
-            x: Math.cos(angle) * 2,
-            y: Math.sin(angle) * 2.5,
-            z: 0
-        };
-    }
-
-    createDefaultChar(index) {
-        const t = index / 100;
-        return {
-            x: (Math.random() - 0.5) * 4,
-            y: (Math.random() - 0.5) * 5,
-            z: 0
-        };
-    }
-
-    animateParticles(targetPositions) {
-        console.log('Starting particle animation'); // Debug log
-        const positions = this.particleSystem.geometry.attributes.position.array;
-        
-        // Create GSAP timeline for smooth animation
-        const tl = gsap.timeline({
-            onComplete: () => {
-                this.isAnimating = false;
-                console.log('Animation completed'); // Debug log
-                // Return to sphere after 3 seconds
-                setTimeout(() => {
-                    this.returnToSphere();
-                }, 3000);
-            }
-        });
-
-        // Animate all particles at once for better performance
-        tl.to({}, {
-            duration: 2,
-            ease: "power2.inOut",
-            onUpdate: () => {
-                const progress = tl.progress();
-                for (let i = 0; i < this.particleCount; i++) {
-                    positions[i * 3] = gsap.utils.interpolate(
-                        this.originalPositions[i * 3],
-                        targetPositions[i].x,
-                        progress
-                    );
-                    positions[i * 3 + 1] = gsap.utils.interpolate(
-                        this.originalPositions[i * 3 + 1],
-                        targetPositions[i].y,
-                        progress
-                    );
-                    positions[i * 3 + 2] = gsap.utils.interpolate(
-                        this.originalPositions[i * 3 + 2],
-                        targetPositions[i].z,
-                        progress
-                    );
-                }
-                this.particleSystem.geometry.attributes.position.needsUpdate = true;
-            }
-        });
-    }
-
-    returnToSphere() {
-        if (this.isAnimating) return;
-        
-        this.isAnimating = true;
-        const positions = this.particleSystem.geometry.attributes.position.array;
-        
-        const tl = gsap.timeline({
-            onComplete: () => {
-                this.isAnimating = false;
-            }
-        });
-
-        for (let i = 0; i < this.particleCount; i++) {
-            tl.to(positions, {
-                duration: 2,
-                ease: "power2.inOut",
-                onUpdate: function() {
-                    const progress = this.progress();
-                    positions[i * 3] = gsap.utils.interpolate(
-                        positions[i * 3],
-                        this.originalPositions[i * 3],
-                        progress
-                    );
-                    positions[i * 3 + 1] = gsap.utils.interpolate(
-                        positions[i * 3 + 1],
-                        this.originalPositions[i * 3 + 1],
-                        progress
-                    );
-                    positions[i * 3 + 2] = gsap.utils.interpolate(
-                        positions[i * 3 + 2],
-                        this.originalPositions[i * 3 + 2],
-                        progress
-                    );
-                },
-                onUpdateScope: tl
-            }, i * 0.001);
-        }
-
-        tl.eventCallback("onUpdate", () => {
-            this.particleSystem.geometry.attributes.position.needsUpdate = true;
-        });
-    }
-
-    showError(message) {
-        const textElement = document.getElementById('recognized-text');
-        textElement.textContent = message;
-        textElement.style.color = '#ef4444';
-    }
-
-    animate() {
-        requestAnimationFrame(() => this.animate());
-        
-        // Rotate particle system slowly
-        if (this.particleSystem && !this.isAnimating) {
-            this.particleSystem.rotation.x += 0.001;
-            this.particleSystem.rotation.y += 0.002;
-        }
-        
-        this.renderer.render(this.scene, this.camera);
-    }
-}
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
-    new VoiceParticleMorph();
-});
+  try {
+    initScene();
+    setupSpeech();
+    bindEvents();
+  } catch (error) {
+    console.error(error);
+    setStatus("Load error");
+    toast("Could not start the particle engine");
+  }
+})();
