@@ -1,330 +1,79 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura Morph - Enhanced Sentence Clarity</title>
-    <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        
-        #input-container {
-            position: absolute; bottom: 40px; left: 50%;
-            transform: translateX(-50%); z-index: 1000;
-        }
-
-        #text-input {
-            background: rgba(10, 0, 20, 0.8); border: 2px solid #00f2ff;
-            color: #fff; padding: 15px 30px; font-size: 18px;
-            border-radius: 50px; outline: none; width: 350px;
-            text-align: center; backdrop-filter: blur(15px);
-            box-shadow: 0 0 35px rgba(0, 242, 255, 0.5);
-            text-transform: uppercase; letter-spacing: 2px;
-            -webkit-appearance: none;
-            appearance: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        #text-input:focus {
-            transform: scale(1.02);
-            box-shadow: 0 0 45px rgba(0, 242, 255, 0.7);
-        }
-
-        #video-container {
-            position: absolute; top: 20px; right: 20px;
-            width: 200px; height: 150px; border: 2px solid #00f2ff;
-            border-radius: 12px; overflow: hidden; z-index: 1000;
-            background: #111; box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
-        }
-        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-
-        #status-info {
-            position: absolute; top: 20px; left: 20px;
-            color: #00f2ff; font-size: 11px; letter-spacing: 1px;
-            text-transform: uppercase; background: rgba(0,0,0,0.85);
-            padding: 15px; border-radius: 10px; line-height: 1.6;
-            border-left: 4px solid #00f2ff; pointer-events: none;
-        }
-
-        canvas { display: block; }
-
-        /* Mobile Responsive Styles */
-        @media (max-width: 768px) {
-            #video-container {
-                width: 120px;
-                height: 90px;
-                top: 10px;
-                right: 10px;
-            }
-
-            #status-info {
-                font-size: 9px;
-                padding: 10px;
-                top: auto;
-                bottom: 120px;
-                left: 10px;
-                right: 10px;
-                max-width: none;
-                line-height: 1.4;
-            }
-
-            #text-input {
-                width: 280px;
-                font-size: 16px;
-                padding: 12px 20px;
-                bottom: 20px;
-            }
-
-            #input-container {
-                bottom: 20px;
-            }
-        }
-
-        /* Tablet Responsive Styles */
-        @media (min-width: 769px) and (max-width: 1024px) {
-            #video-container {
-                width: 160px;
-                height: 120px;
-            }
-
-            #status-info {
-                font-size: 10px;
-                padding: 12px;
-            }
-
-            #text-input {
-                width: 320px;
-                font-size: 17px;
-            }
-        }
-
-        /* Large Desktop Styles */
-        @media (min-width: 1200px) {
-            #video-container {
-                width: 250px;
-                height: 188px;
-            }
-
-            #status-info {
-                font-size: 12px;
-                padding: 18px;
-            }
-
-            #text-input {
-                width: 400px;
-                font-size: 20px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050510">
+  <title>Aura Morph AI</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <canvas id="particle-canvas" aria-label="Interactive particle visualization"></canvas>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
 
-    <div id="status-info">
-        🌟 HIGH-DEFINITION MORPH <br>
-        🎤 LONG SENTENCE SUPPORT ON <br>
-        ☝️ SWIPE INDEX = ROTATE <br>
-        ✋ OPEN/FIST = ZOOM IN/OUT
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Aura Morph home">
+      <span class="brand-mark"></span>
+      <span>AURA <b>MORPH</b></span>
+    </a>
+    <div id="status-pill" class="status-pill">
+      <span class="status-dot"></span>
+      <span id="status-text">Ready</span>
     </div>
-    
-    <div id="video-container">
-        <video id="webcam" autoplay playsinline></video>
-    </div>
+  </header>
 
-    <div id="input-container">
-        <input type="text" id="text-input" placeholder="Type or speak a long sentence..." maxlength="60">
-    </div>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow">VOICE · TEXT · IMAGE</p>
+      <h1 id="hero-title">Shape your words<br><span>into light.</span></h1>
+      <p class="subtitle">Type, speak, or upload an image and watch it become a living particle sculpture.</p>
+    </section>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <aside id="camera-panel" class="camera-panel" hidden>
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="hand-canvas"></canvas>
+      <div class="camera-label">GESTURE CONTROL</div>
+    </aside>
 
-    <script>
-        let scene, camera, renderer, particles, geometry;
-        const particleCount = 10000; // Clarity baranor jonno particle bano hoyeche
-        let lastHandX = 0.5;
+    <section class="composer" aria-label="Particle controls">
+      <div class="input-shell">
+        <button id="mic-btn" class="icon-btn" type="button" aria-label="Start voice input" title="Voice input">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm-7-3a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.08A7 7 0 0 1 5 12Z"/></svg>
+        </button>
+        <input id="text-input" type="text" maxlength="60" autocomplete="off" placeholder="Type something beautiful…">
+        <button id="send-btn" class="send-btn" type="button" aria-label="Create particle text">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.7 4.7 15.6 6.4a1 1 0 0 1 0 1.8L4.7 19.3a1 1 0 0 1-1.35-1.14L4.6 13H11a1 1 0 1 0 0-2H4.6L3.35 5.84A1 1 0 0 1 4.7 4.7Z"/></svg>
+        </button>
+      </div>
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true; 
-        recognition.lang = 'en-US';
+      <div class="quick-actions">
+        <button id="upload-btn" class="action-btn" type="button">
+          <span>＋</span> Upload image
+        </button>
+        <button id="gesture-btn" class="action-btn" type="button">
+          <span>✦</span> Gestures
+        </button>
+        <button id="reset-btn" class="action-btn" type="button">
+          <span>↻</span> Reset
+        </button>
+        <select id="language-select" class="language-select" aria-label="Voice language">
+          <option value="en-US">EN</option>
+          <option value="bn-BD">বাংলা</option>
+        </select>
+      </div>
+      <input id="file-input" type="file" accept="image/*" hidden>
+      <p class="hint">Press Enter to morph · Drag to rotate · Scroll to zoom</p>
+    </section>
+  </main>
 
-        init();
-        animate();
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-        window.addEventListener('load', () => {
-            setTimeout(() => { startEverything(); }, 1000);
-        });
-
-        function startEverything() {
-            try {
-                recognition.start();
-                initHandTracking();
-                document.getElementById('status-info').innerHTML = "🟢 HD SENTENCE AI ONLINE";
-            } catch (err) {
-                document.addEventListener('click', () => {
-                    recognition.start();
-                    initHandTracking();
-                }, { once: true });
-            }
-        }
-
-        function speak(text) {
-            window.speechSynthesis.cancel();
-            const msg = new SpeechSynthesisUtterance(text);
-            msg.rate = 1.0;
-            window.speechSynthesis.speak(msg);
-        }
-
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 20; // Default zoom thora beshi jate boro sentence fit hoy
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.body.appendChild(renderer.domElement);
-
-            const pCanvas = document.createElement('canvas');
-            pCanvas.width = 64; pCanvas.height = 64;
-            const pCtx = pCanvas.getContext('2d');
-            const grad = pCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            grad.addColorStop(0, 'white');
-            grad.addColorStop(0.3, '#00f2ff');
-            grad.addColorStop(1, 'transparent');
-            pCtx.fillStyle = grad; pCtx.fillRect(0,0,64,64);
-            const pTex = new THREE.CanvasTexture(pCanvas);
-
-            geometry = new THREE.BufferGeometry();
-            const pos = new Float32Array(particleCount * 3);
-            for (let i = 0; i < particleCount; i++) {
-                const r = 5;
-                const phi = Math.acos(-1 + (2 * i) / particleCount);
-                const theta = Math.sqrt(particleCount * Math.PI) * phi;
-                pos[i*3] = r * Math.cos(theta) * Math.sin(phi);
-                pos[i*3+1] = r * Math.sin(theta) * Math.sin(phi);
-                pos[i*3+2] = r * Math.cos(phi);
-            }
-            geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-
-            particles = new THREE.Points(geometry, new THREE.PointsMaterial({
-                size: 0.18, // HD clarity-r jonno size komanu hoyeche
-                map: pTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-            }));
-            scene.add(particles);
-
-            recognition.onresult = (e) => {
-                let currentTranscript = '';
-                for (let i = e.resultIndex; i < e.results.length; ++i) {
-                    currentTranscript = e.results[i][0].transcript.trim();
-                    if (currentTranscript.length > 0) {
-                        morphToText(currentTranscript);
-                        if (e.results[i].isFinal) speak(currentTranscript);
-                    }
-                }
-            };
-
-            recognition.onend = () => { recognition.start(); };
-
-            document.getElementById('text-input').addEventListener('keypress', (e) => {
-                if(e.key === 'Enter') {
-                    morphToText(e.target.value);
-                    speak(e.target.value);
-                }
-            });
-        }
-
-        async function initHandTracking() {
-            const videoElement = document.getElementById('webcam');
-            const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-
-            hands.onResults((results) => {
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const landmarks = results.multiHandLandmarks[0];
-                    const indexTip = landmarks[8];
-                    const isIndexUp = indexTip.y < landmarks[6].y;
-                    const isMiddleUp = landmarks[12].y < landmarks[10].y;
-                    const isRingUp = landmarks[16].y < landmarks[14].y;
-                    const isPinkyUp = landmarks[20].y < landmarks[18].y;
-
-                    if (isIndexUp && !isMiddleUp) {
-                        const deltaX = (indexTip.x - lastHandX) * 15;
-                        particles.rotation.y += deltaX; 
-                        lastHandX = indexTip.x;
-                    }
-                    if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) {
-                        camera.position.z += (10 - camera.position.z) * 0.1;
-                    } else if (!isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
-                        camera.position.z += (35 - camera.position.z) * 0.1;
-                    }
-                }
-            });
-
-            const cameraPipe = new Camera(videoElement, {
-                onFrame: async () => { await hands.send({image: videoElement}); },
-                width: 640, height: 480
-            });
-            cameraPipe.start();
-        }
-
-        function morphToText(text) {
-            document.getElementById('text-input').value = text;
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Sentence-er width-er upore base kore canvas boro kora hoyeche
-            canvas.width = 2400; canvas.height = 400;
-            ctx.fillStyle = 'white';
-            
-            // Ultra-Adaptive Font Logic: Sentence joto lomba, font toto choto hobe
-            let fontSize = 180;
-            if (text.length > 10) fontSize = 140;
-            if (text.length > 20) fontSize = 100;
-            if (text.length > 30) fontSize = 70;
-            if (text.length > 45) fontSize = 50;
-            
-            ctx.font = `bold ${fontSize}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text.toUpperCase(), 1200, 200);
-
-            const data = ctx.getImageData(0,0,2400,400).data;
-            const points = [];
-            
-            // High Detail Sampling
-            for (let y=0; y<400; y+=3) {
-                for (let x=0; x<2400; x+=3) {
-                    if (data[(y*2400+x)*4] > 128) {
-                        // Letter clarity-r jonno mapping scale komanu hoyeche
-                        points.push({ x: (x-1200)*0.018, y: (200-y)*0.018, z: (Math.random()-0.5)*1.2 });
-                    }
-                }
-            }
-
-            const cur = geometry.attributes.position.array;
-            for (let i=0; i<particleCount; i++) {
-                const t = points[i % points.length] || {x: (Math.random()-0.5)*20, y:(Math.random()-0.5)*20, z:0};
-                gsap.to(cur, {
-                    duration: 0.7,
-                    [i*3]: t.x, [i*3+1]: t.y, [i*3+2]: t.z,
-                    ease: "power2.out", 
-                    onUpdate: () => geometry.attributes.position.needsUpdate = true
-                });
-            }
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
